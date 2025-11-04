@@ -176,43 +176,44 @@ def generate_text_simple(model,idx,max_new_tokens,context_size):
 
     return idx
 
-tokenizer = tiktoken.get_encoding('gpt2') #使用openai的bpe分词器，后续可以自己弄 
-''' 
-batch =[]
-txt1 = "Every effort moves you"
-txt2 = "Every day holds a"
+if __name__ =='__main__':
+    tokenizer = tiktoken.get_encoding('gpt2') #使用openai的bpe分词器，后续可以自己弄 
+    ''' 
+    batch =[]
+    txt1 = "Every effort moves you"
+    txt2 = "Every day holds a"
 
-batch.append(torch.tensor(tokenizer.encode(txt1)))
-batch.append(torch.tensor(tokenizer.encode(txt2))) 
-batch= torch.stack(batch,dim=0) #堆叠batch
-batch=batch
-print('batch shape: ',batch.shape)
+    batch.append(torch.tensor(tokenizer.encode(txt1)))
+    batch.append(torch.tensor(tokenizer.encode(txt2))) 
+    batch= torch.stack(batch,dim=0) #堆叠batch
+    batch=batch
+    print('batch shape: ',batch.shape)
 
-torch.manual_seed(123)
+    torch.manual_seed(123)
 
-model =GPTModel(GPT_CONFIG_124M)
-out =model(batch)
-print("Input batch:\n", batch)
-print("\nOutput shape:", out.shape)
-print(out)
-'''  
-model =GPTModel(GPT_CONFIG_124M)
-start_context = "Hello, I am"
-encoded = tokenizer.encode(start_context)
-print("encoded:", encoded)
-encoded_tensor = torch.tensor(encoded).unsqueeze(0)            #添加批次维度
-print("encoded_tensor.shape:", encoded_tensor.shape)
+    model =GPTModel(GPT_CONFIG_124M)
+    out =model(batch)
+    print("Input batch:\n", batch)
+    print("\nOutput shape:", out.shape)
+    print(out)
+    '''  
+    model =GPTModel(GPT_CONFIG_124M)
+    start_context = "Hello, I am"
+    encoded = tokenizer.encode(start_context)
+    print("encoded:", encoded)
+    encoded_tensor = torch.tensor(encoded).unsqueeze(0)            #添加批次维度
+    print("encoded_tensor.shape:", encoded_tensor.shape)
 
-model.eval()             # 禁用dropout
-out = generate_text_simple(
-    model=model,
-    idx=encoded_tensor,
-    max_new_tokens=6,
-    context_size=GPT_CONFIG_124M["context_length"]
-)
+    model.eval()             # 禁用dropout
+    out = generate_text_simple(
+        model=model,
+        idx=encoded_tensor,
+        max_new_tokens=6,
+        context_size=GPT_CONFIG_124M["context_length"]
+    )
 
 
-print("Output:", out)
-print("Output length:", len(out[0]))
-decoded_text = tokenizer.decode(out.squeeze(0).tolist())
-print(decoded_text)
+    print("Output:", out)
+    print("Output length:", len(out[0]))
+    decoded_text = tokenizer.decode(out.squeeze(0).tolist())
+    print(decoded_text)
