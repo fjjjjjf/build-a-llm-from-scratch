@@ -39,6 +39,7 @@ def create_dataloader_v1(txt, batch_size=4, max_length=256,
     # Create dataset
     dataset = GPTDatasetV1(txt, tokenizer, max_length, stride)
 
+    #dataset 作用，展示如何读取单个样本，dataloader作用，展示如何根据dataset方式读取多个文本
     # Create dataloader
     dataloader = DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last, num_workers=num_workers)
