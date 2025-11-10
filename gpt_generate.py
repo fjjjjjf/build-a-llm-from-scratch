@@ -52,19 +52,21 @@ def calc_loss_loader(data_loader, model, device, num_batches=None):
     return total_loss/num_batches
 
 def train_model_simple(model, train_loader, val_loader, optimizer, device, num_epochs,
-                       eval_freq, eval_iter, start_context, tokenizer):
-    train_losses, val_losses, track_tokens_seen = [], [], []                        #A
-    tokens_seen, global_step = 0, -1
-    for epoch in range(num_epochs):
-        model.train()
+                       eval_freq, eval_iter, start_context, tokenizer):  #eval_iter评估时最多用多少 batch
+    train_losses, val_losses, track_tokens_seen = [], [], []                #track_tokens_seen：记录当时训练了多少 tokens       
+    tokens_seen, global_step = 0, -1 #token_seen记录记录训练过程中累计处理的 token 数量
+    for epoch in range(num_epochs):    #global_step：记录当前训练步数
+        model.train() #启用dropout
         for input_batch,target_batch in train_loader:
+
             optimizer.zero_grad()
-            loss=calc_loss_batch(input_batch,target_batch,model,device)
-            loss.backward()
+            loss=calc_loss_batch(input_batch,target_batch,model,device) #前向传播
+            loss.backward()  #反向传播
             optimizer.step()
-            tokens_seen += input_batch.numel()
+            tokens_seen += input_batch.numel()  #numel()返回当前batch的token数量
             global_step += 1
-            if global_step % eval_freq == 0:                                        #可选的评估步骤
+
+            if global_step % eval_freq == 0:        #每隔多少freq进行模型评估
                 train_loss, val_loss = evaluate_model(
                 model, train_loader, val_loader, device, eval_iter)
                 train_losses.append(train_loss)
@@ -72,17 +74,19 @@ def train_model_simple(model, train_loader, val_loader, optimizer, device, num_e
                 track_tokens_seen.append(tokens_seen)
                 print(f"Ep {epoch+1} (Step {global_step:06d}): "
                       f"Train loss {train_loss:.3f}, Val loss {val_loss:.3f}")
-        generate_and_print_sample(                                                  #每个 epoch 结束后打印示例文本
+        generate_and_print_sample(       #生成一段文字查看效果                                            #每个 epoch 结束后打印示例文本
             model, tokenizer, device, start_context
         )
     return train_losses,val_losses,track_tokens_seen
+
 def evaluate_model(model, train_loader, val_loader, device, eval_iter):
     model.eval()                #评估阶段不用dropout
     with torch.no_grad():       #禁用梯度跟踪，减少计算开销
         train_loss = calc_loss_loader(train_loader, model, device, num_batches=eval_iter)
         val_loss = calc_loss_loader(val_loader, model, device, num_batches=eval_iter)
-    model.train()
+    model.train()   #恢复
     return train_loss, val_loss
+
 def generate_and_print_sample(model, tokenizer, device, start_context):
     model.eval()
     context_size = model.pos_emb.weight.shape[0]
@@ -102,13 +106,6 @@ if __name__ =='__main__' :
     tokenizer = tiktoken.get_encoding('gpt2')
     model =GPTModel(GPT_CONFIG_124M)
   
-    token_ids = generate_text_simple(
-    model=model,
-    idx=text_to_token_ids(start_context, tokenizer),
-    max_new_tokens=10,
-    context_size=GPT_CONFIG_124M["context_length"]
-    )
-
     file_path ='the-verdict.txt'
     with open(file_path,'r',encoding='utf-8') as file:
         text_data = file.read()
