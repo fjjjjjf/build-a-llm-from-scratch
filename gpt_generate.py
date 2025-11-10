@@ -100,6 +100,33 @@ def generate_and_print_sample(model, tokenizer, device, start_context):
         print(decoded_text.replace("\n", " ")) # Compact print format
     model.train()
 
+def generate(model,idx,max_new_tokens,context_size,
+             temperature=1.0,top_k=None,eos_id=None):
+    for _ in range(max_new_tokens):
+        idx_cond = idx[:,-context_size:]
+        with torch.no_grad():
+            logits= model(idx_cond)
+        logits = logits[:,-1,:]
+        if top_k is not None:  #top_k 过滤
+            top_logits ,_ =torch.topk(logits,top_k)
+            min_val = top_logits[:,-1]
+            logits =torch.where(
+                logits<min_val,
+                torch.tensor(float('-inf')).to(logits.device),
+                logits
+            )
+        if temperature >0.0 : #temperature 过滤
+            logits =logits/temperature
+            probs = torch.softmax(logits,dim=-1)
+            idx_next =torch.multinomial(probs,num_samples=1)
+        else:
+            idx_next = torch.argmax(logits,dim=-1,keepdim=True)
+        if idx_next ==eos_id:
+            break
+        #idx_next = idx_next.unsqueeze(1)
+        idx =torch.cat((idx,idx_next),dim=1)
+    return idx
+
 if __name__ =='__main__' :
     torch.manual_seed(123)
     start_context = "Every effort moves you"
@@ -140,13 +167,22 @@ if __name__ =='__main__' :
     torch.manual_seed(123)
     model = GPTModel(GPT_CONFIG_124M)
     model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0004, weight_decay=0.1)      #A
-    num_epochs = 10
-    train_losses, val_losses, tokens_seen = train_model_simple(
-        model, train_loader, eval_loader, optimizer, device,
-        num_epochs=num_epochs, eval_freq=5, eval_iter=1,
-        start_context="Every effort moves you", tokenizer=tokenizer
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=0.0004, weight_decay=0.1)      #A
+    # num_epochs = 10
+    # train_losses, val_losses, tokens_seen = train_model_simple(
+    #     model, train_loader, eval_loader, optimizer, device,
+    #     num_epochs=num_epochs, eval_freq=5, eval_iter=1,
+    #     start_context="Every effort moves you", tokenizer=tokenizer
+    # )
+    # epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+    # plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
+    token_ids = generate(
+    model=model,
+    idx=text_to_token_ids("Every effort moves you", tokenizer).to(device),
+    max_new_tokens=15,
+    context_size=GPT_CONFIG_124M["context_length"],
+    top_k=25,
+    temperature=1.4
     )
-    epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
-    plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
+    print("Output text:\n", token_ids_to_text(token_ids, tokenizer))
   
