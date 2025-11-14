@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 import tiktoken
 from gpt_download import download_and_load_gpt2
 from gpt_generate import load_weights_into_gpt,GPTModel,text_to_token_ids,token_ids_to_text,generate_text_simple
+import time
 
 url = "https://archive.ics.uci.edu/static/public/228/sms+spam+collection.zip"
 zip_path = "sms_spam_collection.zip"
@@ -115,8 +116,75 @@ def calc_accuracy_loader(data_loader,model,device,num_batches=None):
             break
     return correct_predictions/num_examples
 
+def cal_loss_batch(input_batch,target_batch,model,device):
+    input_batch,target_batch=input_batch.to(device),target_batch.to(device)
+    logits = model(input_batch)[:,1,:]
+    loss= torch.nn.functional.cross_entropy(logits,target_batch)
+    return loss
 
+def cal_loss_loader(data_loader,model,device,num_batches=None):
+    total_loss =0
+    if len(data_loader) ==0:
+        return float('nan')
+    elif num_batches is None:
+        num_batches= len(data_loader)
+    else:
+        num_batches = min(num_batches,len(data_loader))
     
+    for i,(input_batch,target_batch) in enumerate(data_loader):
+        if i<num_batches:
+            loss = cal_loss_batch(input_batch,target_batch,model,device)
+            total_loss+=loss.item()
+        else:
+            break
+    return total_loss/num_batches
+
+def evaluate_model(model, train_loader, val_loader, device, eval_iter):
+    model.eval()                #评估阶段不用dropout
+    with torch.no_grad():       #禁用梯度跟踪，减少计算开销
+        train_loss = cal_loss_loader(train_loader, model, device, num_batches=eval_iter)
+        val_loss = cal_loss_loader(val_loader, model, device, num_batches=eval_iter)
+    model.train()   #恢复
+    return train_loss, val_loss
+
+def train_classifier_simple(model,train_loader,val_loader,optimizer,device,num_epochs,
+                            eval_freq,eval_iter,tokenizer):
+    train_losses ,val_losses,train_accs,val_accs=[],[],[],[]
+    examples_seen,global_step=0,-1
+
+    for epoch in range(num_epochs):
+        model.train()  #  切换成训练模式
+
+        for input_batch,output_batch in train_loader:
+            optimizer.zero_grad()
+            loss = cal_loss_batch(input_batch,output_batch,model,device)
+            loss.backward()
+
+            optimizer.step()
+            examples_seen+= input_batch.shape[0]
+            global_step+=1
+
+            if global_step% eval_freq==0:
+                train_loss,val_loss=evaluate_model(model,train_loader,val_loader,device,eval_iter)
+                train_losses.append(train_loss)
+                val_losses.append(val_loss)
+                print(f"EP{epoch+1}(Step{global_step:06d}):"
+                        f"Train loss {train_loss:.3f},Val loss {val_loss:.3f}")
+        train_accuracy = calc_accuracy_loader(
+            train_loader,model,device,num_batches=eval_iter
+        )
+        val_accuracy =calc_accuracy_loader(
+            val_loader,model,device,num_batches=eval_iter
+        )
+        print(f"Training accuracy:{train_accuracy*100:.2f}% | ",end='')
+        print(f"Validation accuracy:{val_accuracy*100:.2f}%")
+
+        train_accs.append(train_accuracy)
+        val_accs.append(val_accuracy)
+    
+    return train_losses,val_losses,train_accs,val_accs,examples_seen
+
+
 if __name__ =='__main__':
     #download_and_unzip_spam_data(url,zip_path,extracted_path,data_file_path)
     tokenizer = tiktoken.get_encoding('gpt2')
@@ -243,11 +311,17 @@ if __name__ =='__main__':
     model.to(device)
 
     torch.manual_seed(123)
-    train_accuracy = calc_accuracy_loader(train_loader,model,device,num_batches=10)
-    val_accuracy = calc_accuracy_loader(val_loader,model,device,num_batches=10)
-    test_accuracy = calc_accuracy_loader(test_loader,model,device,num_batches=10)
 
-    print(f'Training accuracy:{train_accuracy*100:.2f}%')
-    print(f'Validation accuracy:{val_accuracy*100:.2f}%')
-    print(f'Test accuracy:{test_accuracy*100:.2f}%')
+    start_time =time.time()
+    optimizer =torch.optim.AdamW(model.parameters(),lr=5e-5,weight_decay=0.1)
+    num_epoches =5
+
+    train_losses,val_losses,train_accs,val_accs,example_seen = train_classifier_simple(
+        model,train_loader,val_loader,optimizer,device,num_epoches,eval_freq=50,eval_iter=5,tokenizer=tokenizer
+    )
+
+    end_time = time.time()
+    execution_time_minutes =(end_time-start_time)/60
+    print(f"Training completed in {execution_time_minutes:.2f}minutes.")
+   
 
