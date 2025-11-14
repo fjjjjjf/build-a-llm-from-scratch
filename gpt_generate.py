@@ -3,6 +3,8 @@ import torch
 from gpt import GPT_CONFIG_124M,GPTModel,generate_text_simple
 from MultiHeadAttention import create_dataloader_v1
 import matplotlib.pyplot as plt
+import numpy as np
+
 def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses):
     fig, ax1 = plt.subplots(figsize=(5, 3))
     ax1.plot(epochs_seen, train_losses, label="Training loss")
@@ -242,12 +244,12 @@ if __name__ =='__main__' :
         start_context="Every effort moves you", tokenizer=tokenizer
     )
    
-    torch.save({
-    "model_state_dict": model.state_dict(),
-    "optimizer_state_dict": optimizer.state_dict(),
-    },
-    "model_and_optimizer.pth"
-    )
+    # torch.save({
+    # "model_state_dict": model.state_dict(),
+    # "optimizer_state_dict": optimizer.state_dict(),
+    # },
+    # "model_and_optimizer.pth"
+    # )
  
  
     # epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))

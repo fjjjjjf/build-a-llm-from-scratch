@@ -1,3 +1,5 @@
 *.zip
 *.pth
 *.tsv
+gpt2/
+__pycache__/

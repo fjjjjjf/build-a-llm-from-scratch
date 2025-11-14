@@ -7,6 +7,8 @@ from torch.utils.data import Dataset
 from pathlib import Path
 from torch.utils.data import DataLoader
 import tiktoken
+from gpt_download import download_and_load_gpt2
+from gpt_generate import load_weights_into_gpt,GPTModel,text_to_token_ids,token_ids_to_text,generate_text_simple
 
 url = "https://archive.ics.uci.edu/static/public/228/sms+spam+collection.zip"
 zip_path = "sms_spam_collection.zip"
@@ -89,27 +91,48 @@ def random_split(df,train_frac,validation_frac):
 
     return train_df,validation_df,test_df  #训练，验证，测试集
 
+def calc_accuracy_loader(data_loader,model,device,num_batches=None):
+    model.eval()
+    correct_predictions,num_examples = 0,0
+
+    if num_batches is None:
+        num_batches=len(data_loader)
+    else:
+        num_batches =min(num_batches,len(data_loader))
+    
+    for i ,(input_batch,target_batch) in enumerate(data_loader):
+        if i<num_batches:
+            input_batch,target_batch = input_batch.to(device),target_batch.to(device)
+
+            with torch.no_grad():
+                logits = model(input_batch)[:,-1,:]
+
+            predicted_labels =torch.argmax(logits,dim=-1)
+
+            num_examples += predicted_labels.shape[0]
+            correct_predictions +=(predicted_labels==target_batch).sum().item()
+        else:
+            break
+    return correct_predictions/num_examples
 
 
-
-    return settings, params
+    
 if __name__ =='__main__':
     #download_and_unzip_spam_data(url,zip_path,extracted_path,data_file_path)
-    
-    df = pd.read_csv(data_file_path,sep='\t',header= None,names=['Label','Text'])
-    balanced_df = create_balanced_dataset(df)
-    
-    #print(df['Label'].value_counts())
-    #print(balanced_df['Label'].value_counts())
+    tokenizer = tiktoken.get_encoding('gpt2')
 
-    balanced_df['Label'] =balanced_df['Label'].map({"ham":0,"spam":1})  #转换token
+    
+    # df = pd.read_csv(data_file_path,sep='\t',header= None,names=['Label','Text'])
+    # balanced_df = create_balanced_dataset(df)
+    
+
+    # balanced_df['Label'] =balanced_df['Label'].map({"ham":0,"spam":1})  #转换token
 
     # train_df,validation_df,test_df= random_split(balanced_df,0.7,0.1)  #分割保存数据
     # train_df.to_csv("train.csv",index=None)
     # validation_df.to_csv("validation.csv",index=None)
     # test_df.to_csv("test.csv",index=None)
 
-    tokenizer = tiktoken.get_encoding('gpt2')
 
     train_dataset = SpamDataset(
         csv_file= 'train.csv',
@@ -154,6 +177,8 @@ if __name__ =='__main__':
     
     for input_batch,target_batch in train_loader:
         pass
+        
+    
     # print ("Input batch dimension: ",input_batch.shape)  #[8,120]
     #print("Target batch dimension: ",target_batch.shape) #[8]
 
@@ -181,10 +206,48 @@ if __name__ =='__main__':
 
     BASE_CONFIG.update(model_configs[CHOOSE_MODEL])
 
+    '''
     assert train_dataset.max_length <= BASE_CONFIG["context_length"], (
         f"Dataset length {train_dataset.max_length} exceeds model's context "
         f"length {BASE_CONFIG['context_length']}. Reinitialize data sets with "
         f"`max_length={BASE_CONFIG['context_length']}`"
     )
+    '''
+    model_size = CHOOSE_MODEL.split()[-1].strip("()")
+    settings,params = download_and_load_gpt2(model_size=model_size,models_dir='gpt2')
+    model = GPTModel(BASE_CONFIG)
 
+    load_weights_into_gpt(model,params)
+    model.eval() 
+
+    for param in model.parameters():
+        param.requires_grad = False
+
+    torch.manual_seed(123)
+    num_classes = 2
+    model.out_head = torch.nn.Linear(
+        in_features=BASE_CONFIG["emb_dim"],
+        out_features=num_classes
+    )
+    #允许模型的最后一个transformer层和norm层参与训练
+    for param in model.trf_blocks[-1].parameters():
+        param.requires_grad = True
+    for param in model.final_norm.parameters():
+        param.requires_grad = True
+
+    '''
+    inputs = tokenizer.encode("Do you have time")
+    inputs = torch.tensor(inputs).unsqueeze(0)
+    '''
+    device =torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(device)
+
+    torch.manual_seed(123)
+    train_accuracy = calc_accuracy_loader(train_loader,model,device,num_batches=10)
+    val_accuracy = calc_accuracy_loader(val_loader,model,device,num_batches=10)
+    test_accuracy = calc_accuracy_loader(test_loader,model,device,num_batches=10)
+
+    print(f'Training accuracy:{train_accuracy*100:.2f}%')
+    print(f'Validation accuracy:{val_accuracy*100:.2f}%')
+    print(f'Test accuracy:{test_accuracy*100:.2f}%')
 
