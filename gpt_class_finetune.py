@@ -1,3 +1,5 @@
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import urllib.request
 import zipfile
 import os
@@ -10,6 +12,7 @@ import tiktoken
 from gpt_download import download_and_load_gpt2
 from gpt_generate import load_weights_into_gpt,GPTModel,text_to_token_ids,token_ids_to_text,generate_text_simple
 import time
+import matplotlib.pyplot as plt
 
 url = "https://archive.ics.uci.edu/static/public/228/sms+spam+collection.zip"
 zip_path = "sms_spam_collection.zip"
@@ -118,7 +121,7 @@ def calc_accuracy_loader(data_loader,model,device,num_batches=None):
 
 def cal_loss_batch(input_batch,target_batch,model,device):
     input_batch,target_batch=input_batch.to(device),target_batch.to(device)
-    logits = model(input_batch)[:,1,:]
+    logits = model(input_batch)[:,-1,:]
     loss= torch.nn.functional.cross_entropy(logits,target_batch)
     return loss
 
@@ -184,6 +187,39 @@ def train_classifier_simple(model,train_loader,val_loader,optimizer,device,num_e
     
     return train_losses,val_losses,train_accs,val_accs,examples_seen
 
+def plot_values(epochs_seen, examples_seen, train_values, val_values, label="loss"):
+    fig, ax1 = plt.subplots(figsize=(5, 3))
+
+    ax1.plot(epochs_seen, train_values, label=f"Training {label}")    #A
+    ax1.plot(epochs_seen, val_values, linestyle="-.", label=f"Validation {label}")
+    ax1.set_xlabel("Epochs")
+    ax1.set_ylabel(label.capitalize())
+    ax1.legend()
+
+    ax2 = ax1.twiny()                                                 #B
+    ax2.plot(examples_seen, train_values, alpha=0) # Invisible plot for aligning ticks
+    ax2.set_xlabel("Examples seen")
+
+    fig.tight_layout()                                                #C
+    plt.savefig(f"{label}-plot.pdf")
+    plt.show()
+
+def classify_review (text,model,tokenizer,device,max_length=None,pad_token_id=50256):
+    model.eval()
+
+    input_ids =tokenizer.encode(text)
+    supported_context_length = model.pos_emb.weight.shape[1]
+
+    input_ids= input_ids[:min(max_length,supported_context_length)]
+
+    input_ids+= [pad_token_id]*(max_length-len(input_ids))
+    input_tensor = torch.tensor(input_ids,device=device).unsqueeze(0)  #增加批次维度
+
+    with torch.no_grad():
+        logits = model(input_tensor)[:,-1,:]
+    predicted_label =torch.argmax(logits,dim=-1).item()
+
+    return 'spam' if predicted_label==1 else 'not spam'
 
 if __name__ =='__main__':
     #download_and_unzip_spam_data(url,zip_path,extracted_path,data_file_path)
@@ -314,14 +350,31 @@ if __name__ =='__main__':
 
     start_time =time.time()
     optimizer =torch.optim.AdamW(model.parameters(),lr=5e-5,weight_decay=0.1)
-    num_epoches =5
+    num_epochs =5
 
-    train_losses,val_losses,train_accs,val_accs,example_seen = train_classifier_simple(
-        model,train_loader,val_loader,optimizer,device,num_epoches,eval_freq=50,eval_iter=5,tokenizer=tokenizer
+    train_losses,val_losses,train_accs,val_accs,examples_seen = train_classifier_simple(
+        model,train_loader,val_loader,optimizer,device,num_epochs,eval_freq=50,eval_iter=5,tokenizer=tokenizer
     )
 
     end_time = time.time()
     execution_time_minutes =(end_time-start_time)/60
     print(f"Training completed in {execution_time_minutes:.2f}minutes.")
+
+    text_2 = (
+    "Hey, just wanted to check if we're still on"
+    " for dinner tonight? Let me know!"
+)
+    print(classify_review(
+        text_2, model, tokenizer, device, max_length=train_dataset.max_length
+    ))
+
+    epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+    examples_seen_tensor = torch.linspace(0, examples_seen, len(train_losses))
+    plot_values(epochs_tensor, examples_seen_tensor, train_losses, val_losses)
+        
+    epochs_tensor = torch.linspace(0, num_epochs, len(train_accs))
+    examples_seen_tensor = torch.linspace(0, examples_seen, len(train_accs))
+
+    plot_values(epochs_tensor, examples_seen_tensor, train_accs, val_accs, label="accuracy")
    
 
