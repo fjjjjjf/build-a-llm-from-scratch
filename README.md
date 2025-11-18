@@ -38,7 +38,7 @@ Build a Large Language Model (From Scratch) 中文版](https://skindhu.github.io
 
     context_vec = attn_weights @ values
 8. 完整图例
-![1](picture\3.png)
+![1](picture/3.png)
 9. 使用-INF 屏蔽后续词以及增加dropout来防止过拟合
 ### 4. 从零开始实现用于文本生成的GPT模型
 1. LayNorm层,将数据以N(0,1)的正态分布，来标准化数据
